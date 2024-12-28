@@ -43,7 +43,7 @@ export type PartySync = typeof(setmetatable(
 
 --[=[
     @class PartySync
-    Leaderboard object (PartySync) for creating parties.
+    Object (PartySync) for creating parties.
 ]=]
 
 local function AttemptToResetExpireTime(MemoryStore: MemoryStoreSortedMap, Key: string)
@@ -240,7 +240,7 @@ function PartySync:Get(Player: Player): Party.Party
 	if Player:GetAttribute(IdFlag) then
 		local _Party = self._PartiesInServer[Player:GetAttribute(IdFlag)]
 		if not _Party then
-			return warn("Player's party is part of a different PartySync.")
+			return warn("@PartySync - Player's party is part of a different PartySync.")
 		end
 		return _Party
 	end
@@ -296,12 +296,25 @@ do
 				Processor = ExpectedParty._Processor,
 				metadata = PartyInfo.metadata,
 			})
-		end
 
-		Player:SetAttribute(IdFlag, Id)
+            Player:SetAttribute(IdFlag, Id)
+            task.spawn(AttemptToResetExpireTime, ExpectedParty._MemoryStore, Id)
+		else
+            if not CheckBudgetRequest("Set") then
+                while not CheckBudgetRequest("Set") do
+                    task.wait()
+                end
+            end
+            
+            local SucessfullyRemoved = pcall(PartySyncDS.RemoveAsync, PartySyncDS, `Player_{Player.UserId}`)
+            
+            if  SucessfullyRemoved then
+                warn(`@PartySync: {Player.Name} was removed from PlayerLookup. Party was inactive for 30 days.`)
+            end
+        end
+
 		Player:SetAttribute(ReadyFlag, true)
 
-		task.spawn(AttemptToResetExpireTime, ExpectedParty._MemoryStore, Id)
 	end
 
 	for _, Player in PlayerService:GetPlayers() do
