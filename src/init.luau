@@ -13,18 +13,17 @@ if not TestSuccess then
 	return
 end
 
+local Flags = require(script.Flags)
 local Types = require(script.Types)
 local Processor = require(script.Processor)
 
 local Party = require(script.Party)
-local Signal = require(script.Parent.Signal)
-local Promise = require(script.Parent.Promise)
 
 local PartySyncDS = DataStoreService:GetDataStore("PartySync", "PlayerLookup")
 local CheckBudgetRequest = require(script.CheckBudgetRequest)
 
-local IdFlag = "PartySyncId"
-local ReadyFlag = "PartySyncReady"
+local IdFlag = Flags.IdFlag
+local ReadyFlag = Flags.ReadyFlag
 
 local Syncs = {}
 
@@ -44,21 +43,7 @@ export type PartySync = typeof(setmetatable(
 
 --[=[
     @class PartySync
-    Leaderboard object (PartySync) for managing parties.
-]=]
-
---[=[
-    @function new
-    @within PartySync
-    @return PartySync
-
-    Creates a new PartySync object.
-    - `Name` (string): The name of the PartySync,
-	- `Type` (string): The type of the PartySync, Options are "Persistent" and "Temporary".
-    - `MaxSize` (number): The maximum size of the Party. Defaults to 5.
-	- `BatchOverrides` (table, optional): The batch overrides for the Processor.
-        - `Size` (number, optional): The number of requests to process at once. Defaults to 20
-        - `Delay` (number, optional): The delay between each batch. Defaults to 30
+    Leaderboard object (PartySync) for creating parties.
 ]=]
 
 local function AttemptToResetExpireTime(MemoryStore: MemoryStoreSortedMap, Key: string)
@@ -97,6 +82,21 @@ local function AttemptToLoadParty(MemoryStore: MemoryStoreSortedMap, Key: string
 	return _Party
 end
 
+--[=[
+    @function new
+    @within PartySync
+    @param Config { Name: string, Type: string, MaxSize: number?, BatchOverrides: { Size: number?, Delay: number? }?, }
+    @return PartySync
+
+    Creates a new PartySync object.
+    - `Name` (string): The name of the PartySync,
+    - `Type` (string): The type of the PartySync, Options are "Persistent" and "Temporary".
+    - `MaxSize` (number): The maximum size of the Party. Defaults to 5.
+    - `BatchOverrides` (table, optional): The batch overrides for the Processor.
+        - `Size` (number, optional): The number of requests to process at once. Defaults to 20
+        - `Delay` (number, optional): The delay between each batch. Defaults to 30
+]=]
+
 function PartySync.new(Config: Types.Config): PartySync
 	if not Config.MaxSize then
 		Config.MaxSize = 5
@@ -119,33 +119,27 @@ function PartySync.new(Config: Types.Config): PartySync
 			return false
 		end
 
-        if Process.Event == "SetMax" then
-            if self._Type == "Persistent" then
-                local Success = pcall(
-                    self._MemoryStore.UpdateAsync,
-                    self._MemoryStore,
-                    Process.Key,
-                    function(Data)
-                        if not Data then
-                            return
-                        end
+		if Process.Event == "SetMax" then
+			if self._Type == "Persistent" then
+				local Success = pcall(self._MemoryStore.UpdateAsync, self._MemoryStore, Process.Key, function(Data)
+					if not Data then
+						return
+					end
 
-                        Data.metadata.MaxSize = Process.Value
-                        return Data
-                    end,
-                    2592000
-                )
+					Data.metadata.MaxSize = Process.Value
+					return Data
+				end, 2592000)
 
-                if not Success then
-                    return false
-                else
-                    _Party.Updated:Fire("MaxSize", Process.Value)
-                end
-            end
-             
-            _Party._MaxSize = Process.Value
-            return true
-        end
+				if not Success then
+					return false
+				else
+					_Party.Updated:Fire("MaxSize", Process.Value)
+				end
+			end
+
+			_Party._MaxSize = Process.Value
+			return true
+		end
 
 		local Success = self._Type == "Temporary"
 
@@ -194,7 +188,7 @@ function PartySync.new(Config: Types.Config): PartySync
 
 				if not Success then
 					warn(PartyInfoOrError)
-                end
+				end
 			end
 		end
 
@@ -238,9 +232,9 @@ end
 ]=]
 function PartySync:Get(Player: Player): Party.Party
 	if not Player:GetAttribute(ReadyFlag) then
-		repeat
-			task.wait()
-		until Player:GetAttribute(ReadyFlag)
+		while not Player:GetAttribute(ReadyFlag) do
+            task.wait()
+        end
 	end
 
 	if Player:GetAttribute(IdFlag) then
@@ -253,7 +247,7 @@ function PartySync:Get(Player: Player): Party.Party
 
 	local _Party = Party.new({
 		Player = Player,
-        MaxSize = self.MaxSize,
+		MaxSize = self.MaxSize,
 		Processor = self._Processor,
 	})
 	self._PartiesInServer[_Party._Id] = _Party
@@ -300,7 +294,7 @@ do
 				Player = Player,
 				Override = Id,
 				Processor = ExpectedParty._Processor,
-                metadata = PartyInfo.metadata,
+				metadata = PartyInfo.metadata,
 			})
 		end
 

@@ -24,7 +24,7 @@ local Sync = PartySync.new({
 
 local Party = Sync:Get(Player)
 
-Party:SetMaxSize(10)
+Party:SetMaxSize(10):catch(warn)
 
 Party.PlayerAdded:Connect(function(UserId: number)
     print(`{UserId} has joined the party!`, Party._Members)
@@ -42,4 +42,4 @@ Party.Updated:Connect(function(Index, Value)
     print(`Party {Index} has been updated to {Value}!`)
 end)
 
---task.delay(10, Party.Remove, Party, Player)
+task.delay(10, Party.Remove, Party, Player)
